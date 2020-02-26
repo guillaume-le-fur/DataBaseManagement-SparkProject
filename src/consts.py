@@ -1,5 +1,7 @@
 class Consts:
 
+    GENERATED_DATA_DEFAULT_NAME = './test-generated-data.csv'
+
     ITERATE_MAP_INPUT_FILE = './test-graph.txt'
     ITERATE_MAP_OUTPUT_FILE = './out/iterate/map_out.csv'
     ITERATE_SORT_OUTPUT_FILE = './out/iterate/sort_out.csv'

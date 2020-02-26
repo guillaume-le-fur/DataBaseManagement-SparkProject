@@ -6,14 +6,16 @@ from src.iterate.iterate_reducer import IterateReducer
 from src.iterate.iterate_sorter import IterateSorter
 from src.iterate.iterate_grouper import IterateGrouper
 from src.deduplicator.dedup_mapper import DedupMapper
+from src.data_generator import DataGenerator
 import pandas as pd
 
 
 class Runner:
 
-    def __init__(self, input_file=None):
+    def __init__(self, input_file=None, separator='\\s+'):
+        print(f'Input file {input_file} will be used, with separator : {separator}')
         self.input_file = input_file
-        self.separator = '\\s+'
+        self.separator = separator
 
     def iterate_while_changes(self, verbose=False):
         iteration = 1
@@ -80,5 +82,8 @@ class Runner:
         return ir.output
 
 
-r = Runner('./test-paper.txt')
+file_name = Consts.GENERATED_DATA_DEFAULT_NAME
+dg = DataGenerator()
+dg.data_as_file(100, 100, file_name)
+r = Runner(Consts.GENERATED_DATA_DEFAULT_NAME, ',')
 r.iterate_while_changes()
