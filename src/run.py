@@ -8,6 +8,8 @@ from src.iterate.iterate_grouper import IterateGrouper
 from src.deduplicator.dedup_mapper import DedupMapper
 from src.data_generator import DataGenerator
 import pandas as pd
+import time
+import matplotlib.pyplot as plt
 
 
 class Runner:
@@ -17,13 +19,15 @@ class Runner:
         self.input_file = input_file
         self.separator = separator
 
-    def iterate_while_changes(self, verbose=False):
+    def iterate_while_changes(self, verbose=False, monitor_time=True):
+        initial_time = time.time()
         iteration = 1
         # Init to one is arbitrary, doesn't have any semantic meaning
         counter = 1
         old_data = pd.DataFrame(columns=['from', 'to'])
         while counter > 0:
-            print(f'### Iteration {iteration} ###')
+            if verbose:
+                print(f'### Iteration {iteration} ###')
             new_data = self.run(verbose=verbose)
             counter = abs(new_data.shape[0] - old_data.shape[0])
             if verbose:
@@ -32,6 +36,11 @@ class Runner:
             self.input_file = Consts.DEDUPL_REDUCER_OUTPUT_FILE
             self.separator = ','
             iteration += 1
+        elapsed = time.time() - initial_time
+        if monitor_time:
+            return elapsed
+        else:
+            return None
 
     def run(self, verbose=False):
         im = IterateMapper(self.input_file, self.separator)
@@ -76,7 +85,8 @@ class Runner:
 
         dr = DedupReducer()
         dr.reduce()
-        print(dr)
+        if verbose:
+            print(dr)
         dr.out_output(index=False)
 
         return ir.output
@@ -84,6 +94,13 @@ class Runner:
 
 file_name = Consts.GENERATED_DATA_DEFAULT_NAME
 dg = DataGenerator()
-dg.data_as_file(100, 100, file_name)
-r = Runner(Consts.GENERATED_DATA_DEFAULT_NAME, ',')
-r.iterate_while_changes()
+n_list = [10, 100, 1000, 10000]
+time_list = []
+for n in n_list:
+    dg.data_as_file(n, 100, file_name)
+    r = Runner(Consts.GENERATED_DATA_DEFAULT_NAME, ',')
+    elapsed = r.iterate_while_changes()
+    time_list.append(elapsed)
+
+plt.plot(n_list, time_list)
+plt.show()

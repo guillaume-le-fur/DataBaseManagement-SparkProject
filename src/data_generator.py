@@ -11,8 +11,8 @@ class DataGenerator:
     def get_data(self, n, max_nodes=100):
         return pd.DataFrame(
             {
-                'from': np.random.uniform(0, max_nodes, n),
-                'to': np.random.uniform(0, max_nodes, n)
+                'from': np.random.randint(0, max_nodes, n),
+                'to': np.random.randint(0, max_nodes, n)
             }
         )
 
