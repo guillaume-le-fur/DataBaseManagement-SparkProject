@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from src.consts import Consts
+from src.local_implementation.consts import Consts
 
 
 class DataGenerator:

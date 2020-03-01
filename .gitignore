@@ -2,6 +2,7 @@
 web-Google.txt
 .idea/
 out/
+test.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
