@@ -10,7 +10,8 @@ class IterateMapper(DataTransformer):
         output_file = Consts.ITERATE_MAP_OUTPUT_FILE
         super().__init__(input_file, output_file)
         if iteration == 0:
-            self.load_data(header=0, sep=separator, row_limit=row_limit, skip_rows=skip_rows)
+            self.load_data(header=None, sep=separator, row_limit=row_limit, skip_rows=skip_rows)
+            self.data.columns = ['from', 'to']
         else:
             self.load_data(header=0, sep=separator)
         self.create_output()
