@@ -12,23 +12,27 @@ import time
 import matplotlib.pyplot as plt
 
 
-class Runner:
+class LocalRunner:
+    # TODO find a way to include a row limit in data.
 
-    def __init__(self, input_file=None, separator='\\s+'):
+    def __init__(self, input_file=None, separator='\\s+', row_limit=None, skip_rows=None):
         print(f'Input file {input_file} will be used, with separator : {separator}')
         self.input_file = input_file
         self.separator = separator
+        self.row_limit = row_limit
+        self.skip_rows = skip_rows
+        self.timer = 0.
 
-    def iterate_while_changes(self, verbose=False, monitor_time=True):
+    def run(self, verbose=False):
         initial_time = time.time()
-        iteration = 1
+        iteration = 0
         # Init to one is arbitrary, doesn't have any semantic meaning
         counter = 1
         old_data = pd.DataFrame(columns=['from', 'to'])
         while counter > 0:
             if verbose:
                 print(f'### Iteration {iteration} ###')
-            new_data = self.run(verbose=verbose)
+            new_data = self.iterate(verbose=verbose, iteration=iteration)
             counter = abs(new_data.shape[0] - old_data.shape[0])
             if verbose:
                 print(f'Number of changes : {counter}')
@@ -36,14 +40,16 @@ class Runner:
             self.input_file = Consts.DEDUPL_REDUCER_OUTPUT_FILE
             self.separator = ','
             iteration += 1
-        elapsed = time.time() - initial_time
-        if monitor_time:
-            return elapsed
-        else:
-            return None
+        self.timer = time.time() - initial_time
 
-    def run(self, verbose=False):
-        im = IterateMapper(self.input_file, self.separator)
+    def iterate(self, verbose=False, iteration=0):
+        im = IterateMapper(
+            self.input_file,
+            self.separator,
+            iteration=iteration,
+            row_limit=self.row_limit,
+            skip_rows=self.skip_rows
+        )
 
         if verbose:
             print('--- Initial data ---')
@@ -92,15 +98,15 @@ class Runner:
         return ir.output
 
 
-file_name = Consts.GENERATED_DATA_DEFAULT_NAME
-dg = DataGenerator()
-n_list = [10, 100, 1000, 10000]
-time_list = []
-for n in n_list:
-    dg.data_as_file(n, 100, file_name)
-    r = Runner(Consts.GENERATED_DATA_DEFAULT_NAME, ',')
-    elapsed = r.iterate_while_changes()
-    time_list.append(elapsed)
-
-plt.plot(n_list, time_list)
-plt.show()
+# file_name = Consts.GENERATED_DATA_DEFAULT_NAME
+# dg = DataGenerator()
+# n_list = [10, 100, 1000, 10000]
+# time_list = []
+# for n in n_list:
+#     dg.data_as_file(n, 100, file_name)
+#     r = LocalRunner(Consts.GENERATED_DATA_DEFAULT_NAME, ',')
+#     r.run()
+#     time_list.append(r.timer)
+#
+# plt.plot(n_list, time_list)
+# plt.show()

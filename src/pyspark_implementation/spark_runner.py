@@ -1,3 +1,5 @@
+import time
+
 import pyspark
 import pandas as pd
 from pyspark.sql import functions as f
@@ -6,22 +8,65 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
+class SparkDataManager:
+
+    def __init__(self, spark_context, initial_data_path, sep='\\s+', row_limit=None, skip_rows=None):
+        if initial_data_path is not None:
+            self.sql_context = pyspark.SQLContext(spark_context)
+            self.initial_data = self.sql_context.createDataFrame(
+                pd.read_csv(
+                    initial_data_path,
+                    sep=sep,
+                    nrows=row_limit,
+                    skiprows=skip_rows
+                ),
+                ['f', 't']
+            )
+            self.old_data = self.sql_context.createDataFrame(pd.DataFrame([[0, 1]], columns=['f', 't']))
+            self.data = self.initial_data
+            self.final_output = None
+        else:
+            raise ValueError("File path shouldn't be None.")
+
+    def get_row_diff_and_update(self, new_data):
+        diff = np.abs(self.old_data.count() - new_data.count())
+        self.old_data = new_data
+        return diff
+
+    def show_data(self, full=False):
+        if full:
+            self.data.show(self.data.count(), False)
+        else:
+            self.data.show()
+
+    def save_input(self, file_name):
+        self.initial_data.toPandas().to_csv(f'out/spark_out/{file_name}', index=False)
+
+    def save_output(self, file_name=None):
+        if file_name is None:
+            file_name = 'output.csv'
+        if self.final_output:
+            self.final_output.toPandas().to_csv(f'./out/spark_out/{file_name}', index=False)
+
+    def load_output(self):
+        self.final_output = self.sql_context.createDataFrame(pd.read_csv('./out/spark_out/output.csv'))
+
+
 class SparkRunner:
 
-    def __init__(self, data_path, sep='\\s+', row_limit=None, skip_rows=None):
+    def __init__(self, spark_context, data_path, sep='\\s+', row_limit=None, skip_rows=None):
         self.data_path = data_path
         if data_path is not None:
-            self.spark_context = pyspark.SparkContext()
-            self.sql_context = pyspark.SQLContext(self.spark_context)
-            self.initial_data = self.sql_context.createDataFrame(
-                pd.read_csv(data_path, sep=sep, nrows=row_limit, skiprows=skip_rows), ['f', 't']
-            )
-            self.data = self.sql_context.createDataFrame(
-                pd.read_csv(data_path, sep=sep, nrows=row_limit, skiprows=skip_rows), ['f', 't']
+            self.spark_context = spark_context
+            self.sdm = SparkDataManager(
+                spark_context=spark_context,
+                initial_data_path=data_path,
+                sep=sep,
+                row_limit=row_limit,
+                skip_rows=skip_rows
             )
             self.counter = 1
-            self.old_data = self.sql_context.createDataFrame(pd.DataFrame([[0, 1]], columns=['f', 't']))
-            self.final_output = None
+            self.timer = 0.
         else:
             raise ValueError("File path shouldn't be None.")
 
@@ -34,7 +79,7 @@ class SparkRunner:
         :return: The mapped data, flattened to be pretty and reconverted to DF to keep the same structure.
         """
         if data is None:
-            data = self.data
+            data = self.sdm.data
         # By doing a flatMap, we manage to emit both (from, to) and (to, from)
         # The output of the map function here is then just the edged duplicated in both ways.
         return data.rdd.flatMap(lambda tup: [(tup[0], tup[1]), (tup[1], tup[0])]).toDF(['f', 't'])
@@ -60,7 +105,7 @@ class SparkRunner:
         """
         if verbose:
             print('--- INPUT DATA ---')
-            self.data.show(self.data.count(), False)
+            self.sdm.show_data()
         data = self.map(data)
         grouped_data = data.groupBy('f') \
             .agg(f.min('t').alias('min_t'))
@@ -73,46 +118,23 @@ class SparkRunner:
             print('--- MAP OUTPUT ---')
             first_map_reduce_output.show(first_map_reduce_output.count(), False)
         # TODO See if counter has to be used this way.
-        self.counter = np.abs(self.old_data.count() - first_map_reduce_output.count())
-        self.old_data = first_map_reduce_output
-
-        reduce_out_tmp = first_map_reduce_output\
-            .filter('f > min_t')
+        self.counter = self.sdm.get_row_diff_and_update(first_map_reduce_output)
 
         reduce_out = grouped_data\
-            .selectExpr('f as f', 'min_t as t').union(
-                reduce_out_tmp.selectExpr('t as f', 'min_t as t')
-            ).sort(['f', 't'])
-
-        if verbose:
-            print('--- INTERMEDIATE ---')
-            reduce_out.show(reduce_out.count(), False)
-
-        reduce_out = reduce_out\
+            .selectExpr('f as f', 'min_t as t').\
+            union(
+                first_map_reduce_output.filter('f > min_t').selectExpr('t as f', 'min_t as t')
+            )\
+            .sort(['f', 't']) \
             .dropDuplicates(['f', 't'])\
             .filter('f > t')
 
-        # reduce_out = first_map_reduce_output \
-        #     .withColumn(
-        #         'max_f_t',
-        #         f.greatest(
-        #             first_map_reduce_output.f,
-        #             first_map_reduce_output.t
-        #         )
-        #     ) \
-        #     .selectExpr('max_f_t as f', 'min_t as t') \
-        #     .dropDuplicates() \
-        #     .sort(['f', 't'])
-        #     .filter('f > t') \
-        #
-        #     .groupBy('f')\
-        #     .agg(f.min('t').alias('t'))\
-        #     .sort(['f', 't'])
-        self.data = reduce_out
+        self.sdm.data = reduce_out
 
         if verbose:
             print('--- REDUCE OUTPUT ---')
-            reduce_out.show(reduce_out.count(), False)
+            # reduce_out.show(reduce_out.count(), False)
+            self.sdm.show_data()
             print(f'Value of the counter : {self.counter}')
         return reduce_out
 
@@ -125,75 +147,84 @@ class SparkRunner:
         :return: The output of the last map-reduce algorithm, the connected components of the graph.
         """
         reduce_out = None
+        start_time = time.time()
         while self.counter > 0:
             reduce_out = self.reduce(data, verbose=verbose)
-        self.final_output = reduce_out
+        self.sdm.final_output = reduce_out
+        self.timer = time.time() - start_time
         return reduce_out
 
-    def save_input(self, file_name):
-        self.initial_data.toPandas().to_csv(f'out/spark_out/{file_name}', index=False)
-
-    def save_output(self, file_name=None):
-        if file_name is None:
-            file_name = 'output.csv'
-        if self.final_output:
-            self.final_output.toPandas().to_csv(f'./out/spark_out/{file_name}', index=False)
-
-    def load_output(self):
-        self.final_output = self.sql_context.createDataFrame(pd.read_csv('./out/spark_out/output.csv'))
-
     def plot_graph(self):
-        color_palette = ['red', 'green', 'blue']
-        pd_initial_data = self.initial_data.toPandas()
-        pd_output_data = self.final_output.toPandas()
-        graph = nx.Graph()
+        # Color palette used for graph
+        color_palette = ['red', 'green', 'blue', 'orange', 'purple', 'pink']
+        # Convert data to pandas for convenience.
+        pd_initial_data = self.sdm.initial_data.toPandas()
+        pd_output_data = self.sdm.final_output.toPandas()
+        # Getting nodes list
         from_nodes = pd_initial_data.loc[:, 'f'].unique()
         to_nodes = pd_initial_data.loc[:, 't'].unique()
         all_nodes = list(set(list(from_nodes) + list(to_nodes)))
+        # Getting cluster for coloring
         distinct_clusters = list(pd_output_data.loc[:, 't'].unique())
-        number_clusters = len(distinct_clusters)
+        # Create a dictionary with structure {cluster : color}
         colors = {}
         palette_index = 0
         for cluster in distinct_clusters:
             colors[cluster] = color_palette[palette_index]
+            # Using modulo to have infinite color list.
             palette_index = (palette_index + 1) % len(color_palette)
+        # Instantiate graph
+        graph = nx.Graph()
         color_set = []
         for node in all_nodes:
+            # Adding the node to the graph
             graph.add_node(node)
+            # Adding the color
             if node in distinct_clusters:
+                # If the node is a cluster than assign it's color
                 color_set.append(colors[node])
             else:
+                # Else find the color of the cluster associated with the node.
                 row = pd_output_data[pd_output_data['f'] == node]
-                # TODO debug nodes that don't have a cluster
+                # This if is in case we don't find a color for the node.
                 if row.shape[0] > 0:
                     cluster = row.values[0][1]
                     color_set.append(colors[cluster])
                 else:
                     color_set.append('grey')
 
+        # Append the edges.
         for index, edge in pd_initial_data.iterrows():
             graph.add_edge(edge[0], edge[1])
 
         nx.draw(graph, node_color=color_set, with_labels=True)
         plt.show()
 
-        # graph.add_nodes_from()
-        # graph.
 
-
-# r = SparkRunner('test-paper.txt')
-# r.run(verbose=True).show()
-
-# r = SparkRunner('test-graph.txt')
-# r.load_output()
-# r.final_output.show()
+# # r = SparkRunner('test-paper.txt')
 # # r.run(verbose=True).show()
-# # r.save_output()
-# r.plot_graph()
-
-r2 = SparkRunner('web-Google.txt', row_limit=1000, skip_rows=4) # TODO check exact value, not 6
-r2.run()
-# verbose=True
-r2.save_input('in_google.csv')
-r2.save_output('out_google.csv')
-r2.plot_graph()
+#
+# # r = SparkRunner('test-graph.txt')
+# # r.load_output()
+# # r.final_output.show()
+# # # r.run(verbose=True).show()
+# # # r.save_output()
+# # r.plot_graph()
+# sc = pyspark.SparkContext()
+# n_list = [10, 100, 1000, 10000]
+# run_list = []
+# for n in n_list:
+#     r2 = SparkRunner(sc, 'web-Google.txt', row_limit=n, skip_rows=4)
+#     r2.run()
+#     run_list.append(r2.timer)
+#     # print(r2.timer)
+#     # r2.sdm.save_input('in_google.csv')
+#     # r2.sdm.save_output('out_google.csv')
+#     # r2.plot_graph()
+#
+# # One of the results.
+# # run_list_4 = [23.50942587852478, 24.821873426437378, 39.00197744369507, 129.31728410720825]
+#
+# print(run_list)
+# plt.plot(n_list, run_list)
+# plt.show()

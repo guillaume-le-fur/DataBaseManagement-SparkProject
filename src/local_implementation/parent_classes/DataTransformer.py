@@ -9,8 +9,8 @@ class DataTransformer:
         self.data = None
         self.output = None
 
-    def load_data(self, header=0, sep=','):
-        self.data = pd.read_csv(self.input_file, header=header, sep=sep)
+    def load_data(self, header=0, sep=',', row_limit=None, skip_rows=None):
+        self.data = pd.read_csv(self.input_file, header=header, sep=sep, nrows=row_limit, skiprows=skip_rows)
 
     def create_output(self):
         if self.data is not None and isinstance(self.data, pd.DataFrame):
