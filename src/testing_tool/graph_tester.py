@@ -93,4 +93,7 @@ class GraphTester:
 
 
 gt = GraphTester()
-gt.test_with_generated_data(size_list=[10, 100, 1000])
+gt.test_with_data_file(
+    data_file="./web-Google.txt",
+    size_list=[10, 100, 1000]
+)

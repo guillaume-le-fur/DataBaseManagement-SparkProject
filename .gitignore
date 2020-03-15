@@ -1,7 +1,7 @@
 # Ignoring the Google dataset
 web-Google.txt
 .idea/
-out/
+#out/
 test.ipynb
 
 # Byte-compiled / optimized / DLL files

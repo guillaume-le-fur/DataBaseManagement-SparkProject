@@ -1,5 +1,3 @@
-#!/home/guillaume/Documents/python-virtualenvs/spark-env/bin/python
-
 from src.local_implementation.consts import Consts
 from src.local_implementation.parent_classes.DataTransformer import DataTransformer
 
