@@ -91,9 +91,12 @@ class GraphTester:
 # gt = GraphTester()
 # gt.test_with_generated_data(size_list=[10, 100, 1000])
 
+# result for 10k on cluster
+# local : 653.088761806488
+# spark : 168.76697731018066
 
 gt = GraphTester()
 gt.test_with_data_file(
     data_file="./web-Google.txt",
-    size_list=[1000, 10000, 100000]
+    size_list=[2500, 5000]
 )
